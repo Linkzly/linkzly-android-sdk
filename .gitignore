@@ -1,0 +1,16 @@
+# Build outputs
+build/
+.gradle/
+
+# IDE
+.idea/
+*.iml
+local.properties
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
