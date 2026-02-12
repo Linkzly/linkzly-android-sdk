@@ -126,6 +126,13 @@ publishing {
                     gson.appendNode('artifactId', 'gson')
                     gson.appendNode('version', '2.10.1')
                     gson.appendNode('scope', 'compile')
+
+                    // AndroidX Security Crypto
+                    def securityCrypto = dependenciesNode.appendNode('dependency')
+                    securityCrypto.appendNode('groupId', 'androidx.security')
+                    securityCrypto.appendNode('artifactId', 'security-crypto')
+                    securityCrypto.appendNode('version', '1.1.0-alpha06')
+                    securityCrypto.appendNode('scope', 'compile')
                 }
             }
         }
