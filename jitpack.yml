@@ -1,4 +1,4 @@
 jdk:
-  - openjdk17
+  - 17
 install:
-  - ./gradlew publishToMavenLocal --no-daemon
+  - ./gradlew publishToMavenLocal --no-daemon --no-parallel --console=plain
