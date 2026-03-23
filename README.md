@@ -32,6 +32,26 @@ The official Android SDK for [Linkzly](https://linkzly.com) - a powerful mobile 
 
 **Language Support:** Kotlin (primary, all examples) and Java (fully compatible).
 
+## Prerequisites
+
+Before integrating the SDK, set up your app in the Linkzly Console:
+
+1. Go to **Dashboard > Apps** and click "Register App"
+2. Enter your Android **Package Name** and **SHA-256 Fingerprints**
+3. Choose a verification method (Hosted recommended for quick start)
+4. Copy your **SDK Key** from the post-creation wizard or from Manage App > Overview > SDK Configuration
+
+Your SDK key starts with `slk_` and uniquely identifies your app.
+
+## Getting Your SDK Key
+
+Your SDK key (`slk_` prefix) authenticates your app with Linkzly's servers. You can find it in:
+
+- **Post-creation wizard**: Displayed prominently right after creating your app
+- **Dashboard > Apps > Manage App > Overview > SDK Configuration**: Click the eye icon to reveal, or copy directly
+
+> **Note**: Each app has a unique SDK key. Do not share keys between different apps.
+
 ## Installation
 
 ### Step 1: Add JitPack Repository
@@ -137,7 +157,7 @@ class MyApplication : Application() {
 
         LinkzlySDK.configure(
             context = this,
-            sdkKey = "your-sdk-key-here",
+            sdkKey = "slk_your_key_from_console"  // Get this from Dashboard > Apps > Manage App,
             environment = Environment.STAGING  // Use PRODUCTION for release
         )
     }
@@ -647,9 +667,28 @@ LinkzlySDK.resetGamingTracking()
 
 ## App Links Setup
 
-Android App Links allow your app to handle `https://` URLs directly without a disambiguation dialog. This requires hosting a Digital Asset Links file on your domain.
+Android App Links allow your app to handle `https://` URLs directly without a disambiguation dialog.
 
-### 1. Create assetlinks.json
+### Using Linkzly Hosted Verification (Recommended)
+
+If you chose "Hosted Verification" when creating your app in the console, Linkzly automatically hosts your `assetlinks.json` file. You only need to add the intent-filter to your `AndroidManifest.xml`:
+
+```xml
+<intent-filter android:autoVerify="true">
+    <action android:name="android.intent.action.VIEW" />
+    <category android:name="android.intent.category.DEFAULT" />
+    <category android:name="android.intent.category.BROWSABLE" />
+    <data android:scheme="https" android:host="{your-prefix}.linkz.ly" />
+</intent-filter>
+```
+
+Replace `{your-prefix}` with the brand prefix you chose in the console. No manual file hosting required.
+
+### Self-Hosted Verification
+
+If you chose "Custom Domain Verification", follow these steps:
+
+#### 1. Create assetlinks.json
 
 Host the following file at `https://yourdomain.com/.well-known/assetlinks.json`:
 
@@ -768,7 +807,7 @@ class MyApplication : Application() {
     override fun onCreate() {
         super.onCreate()
 
-        LinkzlySDK.configure(this, "your-sdk-key")
+        LinkzlySDK.configure(this, "slk_your_key_from_console")
 
         // SDK automatically handles:
         // - Install tracking on first launch
@@ -970,6 +1009,16 @@ Core event tracking and deep linking work. Install Referrer and GAID collection 
 
 **How large is the SDK?**
 The SDK adds approximately 80-100KB to your APK (excluding shared dependencies like OkHttp and kotlinx.serialization).
+
+## Integration Checklist
+
+- [ ] Created app in Linkzly Console (Dashboard > Apps)
+- [ ] Copied SDK key from console
+- [ ] Added Linkzly SDK dependency via Gradle
+- [ ] Called `LinkzlySDK.initialize()` in Application class
+- [ ] Added `intent-filter` with `android:autoVerify="true"` in AndroidManifest.xml
+- [ ] Implemented deep link handling in MainActivity
+- [ ] Verified integration in Linkzly Console (Manage App > Integration tab)
 
 ## Support
 
