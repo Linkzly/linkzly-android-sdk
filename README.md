@@ -497,33 +497,108 @@ if (clickId != null) {
 
 ## Push Notification Support
 
-### Prerequisites
+The SDK exposes **two independent push features** — most apps that target individual users want the first one:
 
-- Firebase Cloud Messaging (FCM) integrated in your app
-- A valid `google-services.json` in your app module
+| Feature | Methods | What it does | When to use |
+|---|---|---|---|
+| **Device token registration** | `setNotificationToken` / `getNotificationToken` / `hasNotificationToken` / `clearNotificationToken` | Registers this device's **FCM token** in Linkzly's device registry so campaigns can target the specific device/user. Works with **any** push provider. | You want Linkzly to send (or target) notifications to individual devices/users. |
+| **Broadcast topic subscription** | `initializePush` / `disablePush` | Subscribes the device to a shared **FCM broadcast topic** for "send to All" campaigns. FCM-only, via runtime reflection. | You only need broadcast-to-everyone campaigns and use Firebase Cloud Messaging. |
 
-### Setup
+The two are not mutually exclusive, but they solve different problems. Start with **device token registration** below.
+
+### Registering a device push token
+
+`setNotificationToken` records the device's FCM token in Linkzly's device registry (`/api/sdk/devices/register`). Call it whenever Firebase vends or refreshes a token — the SDK throttles network calls (it only re-registers when the token, user, or app version changes, or after 7 days), so it is safe to call on every launch.
 
 ```kotlin
-// Initialize push notification support (registers FCM token with Linkzly)
-val success = LinkzlySDK.initializePush()
-
-// Disable push notifications (unregisters token)
-val disabled = LinkzlySDK.disablePush()
+class MyFirebaseMessagingService : FirebaseMessagingService() {
+    override fun onNewToken(token: String) {
+        LinkzlySDK.setNotificationToken(token)
+    }
+}
 ```
 
-Call `initializePush()` after `configure()`, typically in your `Application.onCreate()` or after the user opts in to notifications.
+You can also push the current token at startup, e.g. from `FirebaseMessaging.getInstance().token`:
 
-### Non-FCM Providers
+```kotlin
+FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
+    LinkzlySDK.setNotificationToken(token)
+}
+```
 
-If you use a push provider other than Firebase (e.g., Huawei Push Kit), handle token registration through your own integration and pass attribution data via custom events.
+**Binding to a user:** when you call `LinkzlySDK.setUserID(...)`, the SDK automatically re-registers the stored token against the new user id, so campaigns can target that user.
 
-### Troubleshooting Push
+**On logout / notifications disabled:** clear the token. This removes it locally and revokes it server-side.
 
-- Ensure `google-services.json` is present and valid
-- Verify Firebase dependencies are included in your `build.gradle`
-- Check that the device has Google Play Services installed
-- Confirm the FCM sender ID matches your Firebase project
+```kotlin
+LinkzlySDK.clearNotificationToken()
+```
+
+**Inspecting state:**
+
+```kotlin
+val token: String? = LinkzlySDK.getNotificationToken()
+val has: Boolean = LinkzlySDK.hasNotificationToken()
+```
+
+### API Reference
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `setNotificationToken(token: String)` | `Unit` | Registers the device's FCM token in Linkzly's device registry (throttled) |
+| `getNotificationToken()` | `String?` | Returns the currently stored push token, if any |
+| `hasNotificationToken()` | `Boolean` | Checks whether a push token is stored |
+| `clearNotificationToken()` | `Unit` | Clears the token locally and revokes it server-side |
+
+### Broadcast topic subscription (optional, FCM-only)
+
+Use this only if you want "send to All" broadcast campaigns and your app uses Firebase Cloud Messaging.
+
+#### Prerequisites
+
+- Firebase Cloud Messaging integrated in your app (`com.google.firebase:firebase-messaging`)
+- A valid `google-services.json` in your app module
+- Linkzly SDK configured and initialized
+
+> **Note:** `initializePush()` and `disablePush()` are **Firebase Cloud Messaging only**. They subscribe/unsubscribe the device to an FCM broadcast topic using runtime reflection.
+>
+> If your app uses **OneSignal**, **Braze**, or another push provider, you do **not** need to call these methods. Your provider's own SDK handles device registration and subscriptions. The Linkzly backend supports multiple push providers and will deliver campaigns through whichever provider is configured in the Linkzly Console.
+
+#### Setup
+
+Call `initializePush()` once on app startup, after both Firebase and Linkzly SDK are configured:
+
+```kotlin
+// In your Application.onCreate() or main Activity
+LinkzlySDK.configure(this, "slk_your_sdk_key")
+
+// After Firebase is initialized
+val success = LinkzlySDK.initializePush()
+if (success) {
+    Log.d("MyApp", "Push notifications enabled")
+} else {
+    Log.w("MyApp", "Firebase Messaging not available")
+}
+```
+
+#### Disabling Push
+
+```kotlin
+LinkzlySDK.disablePush()
+```
+
+#### How It Works
+
+- `initializePush()` subscribes the device to a Linkzly broadcast topic via FCM
+- No Firebase dependency is added to the Linkzly SDK itself -- it uses runtime reflection
+- If Firebase Messaging is not available, the method returns `false` safely (no crash)
+- Push campaigns sent from Linkzly Console targeting "All" users are delivered via this topic
+
+#### Troubleshooting
+
+- `initializePush()` returns `false` -- Firebase Messaging not found in your app
+- Notifications not received -- Ensure Firebase is initialized before calling `initializePush()`
+- Ensure `google-services.json` is present and valid, and the device has Google Play Services installed
 
 ## Gaming Tracking Module
 
@@ -1018,6 +1093,7 @@ The SDK adds approximately 80-100KB to your APK (excluding shared dependencies l
 - [ ] Called `LinkzlySDK.initialize()` in Application class
 - [ ] Added `intent-filter` with `android:autoVerify="true"` in AndroidManifest.xml
 - [ ] Implemented deep link handling in MainActivity
+- [ ] Registered device push token via `setNotificationToken` (and cleared on logout)
 - [ ] Verified integration in Linkzly Console (Manage App > Integration tab)
 
 ## Support
