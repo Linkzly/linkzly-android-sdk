@@ -502,7 +502,7 @@ The SDK exposes **two independent push features** — most apps that target indi
 | Feature | Methods | What it does | When to use |
 |---|---|---|---|
 | **Device token registration** | `setNotificationToken` / `getNotificationToken` / `hasNotificationToken` / `clearNotificationToken` | Registers this device's **FCM token** in Linkzly's device registry so campaigns can target the specific device/user. Works with **any** push provider. | You want Linkzly to send (or target) notifications to individual devices/users. |
-| **Broadcast topic subscription** | `initializePush` / `disablePush` | Subscribes the device to a shared **FCM broadcast topic** for "send to All" campaigns. FCM-only, via runtime reflection. | You only need broadcast-to-everyone campaigns and use Firebase Cloud Messaging. |
+| **Broadcast topic subscription** | `initializePush` / `disablePush` | Subscribes the device to its **per-(Smart App, platform) FCM topic** for "send to All" campaigns. The topic name comes from a successful `setNotificationToken` registration — `initializePush()` alone is a no-op until then. FCM-only, via runtime reflection. | You need broadcast-to-everyone campaigns and use Firebase Cloud Messaging. |
 
 The two are not mutually exclusive, but they solve different problems. Start with **device token registration** below.
 
@@ -560,7 +560,7 @@ Use this only if you want "send to All" broadcast campaigns and your app uses Fi
 - A valid `google-services.json` in your app module
 - Linkzly SDK configured and initialized
 
-> **Note:** `initializePush()` and `disablePush()` are **Firebase Cloud Messaging only**. They subscribe/unsubscribe the device to an FCM broadcast topic using runtime reflection.
+> **Note:** `initializePush()` and `disablePush()` are **Firebase Cloud Messaging only**. They subscribe/unsubscribe the device to its server-assigned FCM broadcast topic (`linkzly_broadcast_<smartAppId>_android`) using runtime reflection. **Broadcast reach requires a successful `setNotificationToken()` registration first** — the topic name is returned by `/api/sdk/devices/register`. Calling `initializePush()` alone does not receive broadcasts.
 >
 > If your app uses **OneSignal**, **Braze**, or another push provider, you do **not** need to call these methods. Your provider's own SDK handles device registration and subscriptions. The Linkzly backend supports multiple push providers and will deliver campaigns through whichever provider is configured in the Linkzly Console.
 
