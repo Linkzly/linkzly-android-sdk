@@ -7,28 +7,33 @@
 
 The official Android SDK for [Linkzly](https://linkzly.com) - a powerful mobile app attribution and deep linking platform.
 
+**SDK version:** 1.0.9
+
+Full documentation: https://docs.linkzly.com/docs/sdk-android
+
+Guides: [Tracking events](https://docs.linkzly.com/docs/sdk-tracking-events) | [Tracking purchases and refunds](https://docs.linkzly.com/docs/sdk-tracking-purchases) | [Integrations setup](https://docs.linkzly.com/docs/sdk-integrations-setup)
+
 ## Features
 
 - **Attribution Tracking** - Install tracking with Google Play Install Referrer API, app open tracking, automatic session management
 - **Deep Linking** - Standard deep links (URL schemes, App Links), deferred deep linking, smart link parameter extraction
-- **Custom Event Tracking** - Track in-app events with custom parameters, batch tracking, purchase tracking
+- **Custom Event Tracking** - Track in-app events with custom parameters, batch tracking, purchase and refund tracking
 - **Affiliate Attribution** - Capture affiliate click IDs from deep links, server-to-server attribution, 30-day storage with expiry
-- **Push Notifications** - Firebase Cloud Messaging (FCM) integration, token management
+- **Push Notifications** - Device push token registration, optional Firebase Cloud Messaging (FCM) broadcast topic
 - **Gaming Tracking** - Dedicated gaming event pipeline, player identification, session tracking, gaming-specific attribution
-- **Privacy Controls** - GDPR/CCPA compliant, user opt-in/opt-out, advertising tracking controls, two-tier consent model
+- **Privacy Controls** - User opt-in/opt-out, separate advertising identifier switch
 - **Offline Event Queue** - Automatic event queuing when offline, manual flush, pending event inspection
-- **Production Ready** - ProGuard/R8 compatible, lightweight (< 100KB), coroutine-based async operations
+- **Debug Controls** - `LinkzlySDKDebug` batching overrides for debuggable app builds
+- **Production Ready** - ProGuard/R8 compatible, lifecycle-aware, coroutine-based async operations
 
 ## Requirements
 
-| Component | Minimum Version | Recommended |
-|-----------|----------------|-------------|
-| Android SDK | API 21 (5.0 Lollipop) | API 33+ (13.0) |
-| Target SDK | API 34 (14.0) | API 34+ |
-| Java | 8+ | 11+ |
-| Kotlin | 1.8+ | 1.9+ |
-| Gradle | 7.0+ | 8.0+ |
-| Android Studio | 2021.3.1+ | Latest |
+| Component | Value |
+|-----------|-------|
+| `minSdk` | 21 (5.0 Lollipop), as declared in the SDK's manifest |
+| Built and tested with | Android Gradle Plugin 8.2.2, Gradle 8.2, Kotlin 1.9.20, `compileSdk` 34, Java 17 |
+
+The minimum is the value the SDK declares; it is not a tested floor.
 
 **Language Support:** Kotlin (primary, all examples) and Java (fully compatible).
 
@@ -41,7 +46,7 @@ Before integrating the SDK, set up your app in the Linkzly Console:
 3. Choose a verification method (Hosted recommended for quick start)
 4. Copy your **SDK Key** from the post-creation wizard or from Manage App > Overview > SDK Configuration
 
-Your SDK key starts with `slk_` and uniquely identifies your app.
+Your SDK key starts with `slk_` followed by at least 40 hexadecimal characters, and uniquely identifies your app. `configure()` rejects any other format.
 
 ## Getting Your SDK Key
 
@@ -82,11 +87,19 @@ dependencyResolutionManagement {
 
 ### Step 2: Add the Dependency
 
-Add the SDK to your app's `build.gradle`:
+Add the SDK to your app's `build.gradle.kts`:
+
+```kotlin
+dependencies {
+    implementation("com.github.Linkzly:linkzly-android-sdk:1.0.9")
+}
+```
+
+Or in Groovy (`build.gradle`):
 
 ```gradle
 dependencies {
-    implementation 'com.github.Linkzly:linkzly-android-sdk:1.0.1'
+    implementation 'com.github.Linkzly:linkzly-android-sdk:1.0.9'
 }
 ```
 
@@ -141,6 +154,9 @@ Add your Application class and required intent filters:
 The SDK automatically includes these permissions (no manual action needed):
 - `INTERNET` - For API communication
 - `ACCESS_NETWORK_STATE` - For network connectivity checks
+- `READ_PHONE_STATE` - Declared in the SDK's manifest
+
+The SDK's dependencies also merge in `com.google.android.gms.permission.AD_ID` and the Play Install Referrer service permission.
 
 ### 2. Initialize SDK
 
@@ -157,12 +173,14 @@ class MyApplication : Application() {
 
         LinkzlySDK.configure(
             context = this,
-            sdkKey = "slk_your_key_from_console"  // Get this from Dashboard > Apps > Manage App,
+            sdkKey = "slk_your_key_from_console",  // Get this from Dashboard > Apps > Manage App
             environment = Environment.STAGING  // Use PRODUCTION for release
         )
     }
 }
 ```
+
+`Environment` has three values: `PRODUCTION` (the default), `STAGING` and `DEVELOPMENT`. The first `configure()` call wins. Install, open and session tracking start by themselves; there is nothing else to call.
 
 **Don't forget to register your Application class in AndroidManifest.xml:**
 ```xml
@@ -171,12 +189,10 @@ class MyApplication : Application() {
 
 ### 3. Track Events
 
+**Register the name first.** A custom event is kept only if its name is registered for the app in the console. An unregistered name is dropped, and on the default batched path the call and the flush still report success. See [Register each name in the console](https://docs.linkzly.com/docs/sdk-tracking-events#register-each-name-in-the-console).
+
 ```kotlin
-LinkzlySDK.trackEvent("purchase_completed", mapOf(
-    "product_id" to "abc123",
-    "price" to 29.99,
-    "currency" to "USD"
-))
+LinkzlySDK.trackEvent("signup_completed", mapOf("method" to "email"))
 ```
 
 ### 4. Handle Deep Links
@@ -194,13 +210,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    override fun onNewIntent(intent: Intent?) {
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        intent?.let {
-            val deepLinkData = LinkzlySDK.handleAppLink(it)
-            deepLinkData?.let { data ->
-                navigateTo(data.path, data.getStringParameter("id"))
-            }
+        val deepLinkData = LinkzlySDK.handleAppLink(intent)
+        deepLinkData?.let { data ->
+            navigateTo(data.path, data.getStringParameter("id"))
         }
     }
 }
@@ -232,6 +246,9 @@ Look for:
 ```
 
 **2. Verify Event Tracking:**
+
+Register `test_event` for the app first (see [Register each name in the console](https://docs.linkzly.com/docs/sdk-tracking-events#register-each-name-in-the-console)). Linkzly drops an event whose name is not registered.
+
 ```kotlin
 LinkzlySDK.trackEvent("test_event", mapOf("test" to true))
 ```
@@ -241,6 +258,8 @@ Logcat should show:
 D/LinkzlySDK: Tracking event: test_event with parameters: {test=true}
 D/LinkzlySDK: Event tracked successfully
 ```
+
+This log only shows that the SDK sent the event. It does not show that Linkzly kept it: an unregistered name is dropped.
 
 **3. Test Deep Links with ADB:**
 ```bash
@@ -260,7 +279,7 @@ adb shell am start -W -a android.intent.action.VIEW \
 - [ ] Application class created and registered in AndroidManifest
 - [ ] SDK initializes on app launch (check Logcat)
 - [ ] First install event tracked automatically
-- [ ] Custom events tracked successfully
+- [ ] Custom events tracked successfully, once their names are registered for the app
 - [ ] Intent filters added to MainActivity in AndroidManifest
 - [ ] Deep links open your app (test with ADB)
 - [ ] Deep link data extracted correctly
@@ -306,14 +325,18 @@ deepLinkData?.getParameter("custom")        // JsonElement?
 ### Attribution
 
 ```kotlin
-// Track install (first launch) - returns deferred deep link data if available
+// The SDK already sends the install on the first launch of a new install, so calling
+// trackInstall on a new install sends a second install event. On Android this is
+// currently the only way to get the deferred deep link data in code: call it once,
+// behind your own first-launch flag (the flag stops a third event, not the second).
 LinkzlySDK.trackInstall { result ->
     result.onSuccess { deepLinkData ->
         deepLinkData?.let { navigateTo(it.path) }
     }
 }
 
-// Track app open
+// Track app open: the SDK already sends opens itself, so each explicit call sends one more open event.
+// Call it only when you need the DeepLinkData it returns.
 LinkzlySDK.trackOpen { result ->
     result.onSuccess { deepLinkData ->
         deepLinkData?.let { handleDeepLink(it) }
@@ -321,9 +344,11 @@ LinkzlySDK.trackOpen { result ->
 }
 ```
 
-Both install and open events are tracked automatically by the SDK's lifecycle observer. Use these methods when you need the callback (e.g., for deferred deep links).
+The SDK already sends opens itself (when the app returns to the foreground after more than 30 seconds). Each explicit `trackOpen` call sends one more open event; call it only when you need the `DeepLinkData` it returns. The install is also sent automatically (see the note above on `trackInstall`).
 
 ### Event Tracking
+
+**Register the name first.** A custom event is kept only if its name is registered for the app in the console. An unregistered name is dropped, and on the default batched path the call and the flush still report success. See [Register each name in the console](https://docs.linkzly.com/docs/sdk-tracking-events#register-each-name-in-the-console).
 
 ```kotlin
 // Track a custom event
@@ -332,35 +357,47 @@ LinkzlySDK.trackEvent("level_completed", mapOf(
     "score" to 12500
 ))
 
-// Track a purchase
+// Track a purchase: revenue, currency and transactionId are required.
+// transactionId is the deduplication key. revenueType is "iap", "subscription" or "other".
 LinkzlySDK.trackPurchase(
     parameters = mapOf(
-        "amount" to 9.99,
+        "revenue" to 9.99,
         "currency" to "USD",
-        "sku" to "premium_monthly"
+        "transactionId" to "order-12345",
+        "productId" to "premium_monthly",
+        "revenueType" to "subscription"
     ),
     callback = { result ->  // optional
         result.onSuccess { Log.d("Linkzly", "Purchase tracked") }
     }
 )
 
-// Track multiple events in a batch
+// Track a refund: reuse the ORIGINAL transactionId so it nets out the purchase
+LinkzlySDK.trackRefund(
+    parameters = mapOf(
+        "revenue" to 9.99,
+        "currency" to "USD",
+        "transactionId" to "order-12345"
+    )
+)
+
+// Track multiple events in a batch (each map has eventType, eventName and customData keys)
 LinkzlySDK.trackEventBatch(
-    events = listOf(event1, event2, event3),
+    events = listOf(
+        mapOf("eventType" to "custom", "eventName" to "level_started", "customData" to mapOf("level" to 1)),
+        mapOf("eventType" to "custom", "eventName" to "level_completed", "customData" to mapOf("level" to 1))
+    ),
     callback = { result ->
         result.onSuccess { Log.d("Linkzly", "Batch tracked") }
     }
 )
 ```
 
-### Session Management
+See [Tracking events](https://docs.linkzly.com/docs/sdk-tracking-events) and [Tracking purchases and refunds](https://docs.linkzly.com/docs/sdk-tracking-purchases) for the full guides.
 
-The SDK tracks sessions automatically using `ProcessLifecycleOwner` with a 30-minute timeout. For manual control:
+### Sessions
 
-```kotlin
-LinkzlySDK.startSession()
-LinkzlySDK.endSession()
-```
+Sessions are automatic. The SDK observes `ProcessLifecycleOwner`: a session starts each time the app comes to the foreground and ends when it goes to the background. There are no session methods to call.
 
 ### User Management
 
@@ -391,7 +428,7 @@ LinkzlySDK.resetVisitorID()
 
 ### Event Queue
 
-Events are queued locally and flushed automatically. For manual control:
+Events are queued locally and flushed automatically. The queue is saved to SharedPreferences, so it survives an app restart, and holds up to 1,000 events (the oldest is dropped when it is full). For manual control:
 
 ```kotlin
 // Flush pending events immediately
@@ -402,14 +439,17 @@ LinkzlySDK.flushEvents { result ->
 // Get the number of pending events
 val count: Int = LinkzlySDK.getPendingEventCount()
 
-// Get the list of pending events
+// Get the list of pending events. Only works when SDK logging is enabled
+// (Environment.STAGING or DEVELOPMENT); with PRODUCTION it logs
+// "getPendingEvents() requires loggingEnabled=true" and returns an empty list.
 val events: List<QueuedEvent> = LinkzlySDK.getPendingEvents()
 ```
 
 ### Privacy Controls
 
 ```kotlin
-// Disable/enable all tracking
+// Stop custom events, purchases, refunds and trackEventBatch
+// (install, open and session-end events are not affected; no effect before configure())
 LinkzlySDK.setTrackingEnabled(false)
 val isEnabled: Boolean = LinkzlySDK.isTrackingEnabled()
 
@@ -418,7 +458,7 @@ LinkzlySDK.setAdvertisingTrackingEnabled(false)
 val isAdEnabled: Boolean = LinkzlySDK.isAdvertisingTrackingEnabled()
 ```
 
-When tracking is disabled, the SDK stops collecting and sending all events. Advertising tracking controls only affect GAID collection while allowing other event tracking to continue.
+`setTrackingEnabled(false)` stops custom events, purchases, refunds and `trackEventBatch`. It does not stop the install, open and session-end events the SDK sends itself, and it has no effect before `configure`. Advertising tracking controls only affect GAID collection while allowing other event tracking to continue.
 
 ## Affiliate Attribution Tracking
 
@@ -439,9 +479,9 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 }
 
-override fun onNewIntent(intent: Intent?) {
+override fun onNewIntent(intent: Intent) {
     super.onNewIntent(intent)
-    intent?.data?.let { LinkzlySDK.captureAffiliateAttribution(it) }
+    intent.data?.let { LinkzlySDK.captureAffiliateAttribution(it) }
 }
 ```
 
@@ -455,7 +495,7 @@ if (LinkzlySDK.hasAffiliateAttribution()) {
     // attribution.clickId, attribution.programId, attribution.affiliateId,
     // attribution.timestamp, attribution.hasAttribution, attribution.source
 
-    // Or get just the click ID for S2S postback
+    // Or get just the click ID for S2S reporting
     val clickId: String? = LinkzlySDK.getAffiliateClickId()
 }
 
@@ -490,7 +530,7 @@ if (clickId != null) {
 
 ### Storage and Expiry
 
-- Attribution data is stored in SharedPreferences
+- Attribution data is stored in encrypted SharedPreferences
 - Default expiry: **30 days** from capture
 - Expired attribution is automatically cleared on next access
 - Call `clearAffiliateAttribution()` to manually remove stored data
@@ -501,7 +541,7 @@ The SDK exposes **two independent push features** — most apps that target indi
 
 | Feature | Methods | What it does | When to use |
 |---|---|---|---|
-| **Device token registration** | `setNotificationToken` / `getNotificationToken` / `hasNotificationToken` / `clearNotificationToken` | Registers this device's **FCM token** in Linkzly's device registry so campaigns can target the specific device/user. Works with **any** push provider. | You want Linkzly to send (or target) notifications to individual devices/users. |
+| **Device token registration** | `setNotificationToken` / `getNotificationToken` / `hasNotificationToken` / `clearNotificationToken` | Registers this device's **Firebase Cloud Messaging (FCM) registration token** in Linkzly's device registry so campaigns can target the specific device/user. Devices registered through the SDK are reached through Firebase Cloud Messaging. | You want Linkzly to send (or target) notifications to individual devices/users. |
 | **Broadcast topic subscription** | `initializePush` / `disablePush` | Subscribes the device to its **per-(Smart App, platform) FCM topic** for "send to All" campaigns. The topic name comes from a successful `setNotificationToken` registration — `initializePush()` alone is a no-op until then. FCM-only, via runtime reflection. | You need broadcast-to-everyone campaigns and use Firebase Cloud Messaging. |
 
 The two are not mutually exclusive, but they solve different problems. Start with **device token registration** below.
@@ -541,7 +581,11 @@ val token: String? = LinkzlySDK.getNotificationToken()
 val has: Boolean = LinkzlySDK.hasNotificationToken()
 ```
 
-### API Reference
+**The app passes the token.** The SDK never reads it from Firebase. An empty token is ignored. If the server does not acknowledge a registration, the token is kept and registration is retried on the next trigger or app launch. Before `configure` has run, `setNotificationToken` is ignored: a warning is logged and nothing is stored. An app that delays `configure` calls it again afterwards with the current token.
+
+`clearNotificationToken()` is the durable opt-out: it removes the token locally, revokes it on the server and unsubscribes the broadcast topic. `disablePush()` only unsubscribes the topic.
+
+### Token methods
 
 | Method | Returns | Description |
 |--------|---------|-------------|
@@ -562,11 +606,11 @@ Use this only if you want "send to All" broadcast campaigns and your app uses Fi
 
 > **Note:** `initializePush()` and `disablePush()` are **Firebase Cloud Messaging only**. They subscribe/unsubscribe the device to its server-assigned FCM broadcast topic (`linkzly_broadcast_<smartAppId>_android`) using runtime reflection. **Broadcast reach requires a successful `setNotificationToken()` registration first** — the topic name is returned by `/api/sdk/devices/register`. Calling `initializePush()` alone does not receive broadcasts.
 >
-> If your app uses **OneSignal**, **Braze**, or another push provider, you do **not** need to call these methods. Your provider's own SDK handles device registration and subscriptions. The Linkzly backend supports multiple push providers and will deliver campaigns through whichever provider is configured in the Linkzly Console.
+> If your app also uses another push provider for its own delivery, you do **not** need to call these methods for it. Devices registered through the SDK are reached through Firebase Cloud Messaging.
 
 #### Setup
 
-Call `initializePush()` once on app startup, after both Firebase and Linkzly SDK are configured:
+Most apps do not need this call: after a token registration succeeds the SDK subscribes to the topic by itself, and `initializePush()` is the explicit re-subscribe call. If you do call it, call it once on app startup, after both Firebase and Linkzly SDK are configured:
 
 ```kotlin
 // In your Application.onCreate() or main Activity
@@ -596,7 +640,7 @@ LinkzlySDK.disablePush()
 
 #### Troubleshooting
 
-- `initializePush()` returns `false` -- Firebase Messaging not found in your app
+- `initializePush()` returns `false` -- no broadcast topic is stored yet (call `setNotificationToken` first and wait for the registration to succeed), or Firebase Messaging is not in your app
 - Notifications not received -- Ensure Firebase is initialized before calling `initializePush()`
 - Ensure `google-services.json` is present and valid, and the device has Google Play Services installed
 
@@ -674,6 +718,8 @@ LinkzlySDK.trackGamingEventImmediate(
 )
 ```
 
+A gaming `purchase` event is game telemetry and is not recorded as revenue; report revenue with `trackPurchase`.
+
 ### Gaming Sessions
 
 Sessions are tracked automatically when `autoSessionTracking` is enabled. For manual control:
@@ -739,6 +785,59 @@ LinkzlySDK.resetGamingTracking()
 | `sessionTimeoutMs` | `Int` | `1800000` (30 min) | Session timeout (ms) |
 | `autoSessionTracking` | `Boolean` | `true` | Auto track sessions on lifecycle |
 | `signingSecret` | `String?` | `null` | HMAC signing secret for requests |
+
+## Debug and Batching Controls
+
+`LinkzlySDKDebug` (package `com.linkzly.sdk.utils`) changes how the event queue batches and flushes, so you can watch events arrive without waiting for the default timers. It is for development builds only.
+
+**When they take effect.** Each method first checks `isAppDebuggable(context)`, which reads your app's `FLAG_DEBUGGABLE` (the app's build type, not the SDK library's). In a debuggable build the values you set override the server-driven configuration and the defaults. In a non-debuggable build the setters log a warning and do nothing, the getters return `null`, and the queue ignores saved overrides. Do not ship calls to these methods in a release build.
+
+**Strategies.** The strategy is a string:
+
+| Strategy | Effect |
+|---|---|
+| `"smart"` | Only custom events are batched; install, open and purchase events are sent immediately. This is the default. |
+| `"all"` | Every event type is batched. |
+| `"instant"` | Nothing is batched; every event is sent immediately. |
+| `"custom"` | Same as `"smart"`. |
+
+The `BatchingStrategy` class in the SDK's `models` package is deprecated and is not used by these methods.
+
+**Limits and defaults.** Batch size accepts 1 to 100 (default 20). Flush interval is in seconds and accepts 10 to 300 (default 30). Out-of-range values throw `IllegalArgumentException`.
+
+```kotlin
+import com.linkzly.sdk.utils.LinkzlySDKDebug
+
+LinkzlySDKDebug.setBatchingStrategy(context, "all")
+LinkzlySDKDebug.setBatchSize(context, 5)
+LinkzlySDKDebug.setFlushInterval(context, 15)
+
+LinkzlySDKDebug.printDebugConfig(context)        // logs the current values
+val strategy: String? = LinkzlySDKDebug.getDebugStrategy(context)
+val size: Int? = LinkzlySDKDebug.getDebugBatchSize(context)
+val interval: Long? = LinkzlySDKDebug.getDebugFlushInterval(context)
+
+// Set batch size, flush interval and (optionally) strategy in one call
+LinkzlySDKDebug.simulateServerConfig(context, batchSize = 10, flushInterval = 30, strategy = "all")
+
+LinkzlySDKDebug.resetDebugConfig(context)        // back to defaults
+val debuggable: Boolean = LinkzlySDKDebug.isAppDebuggable(context)
+```
+
+After `simulateServerConfig`, restart the SDK or call `flushEvents` to apply the change immediately. Its `ttl` parameter is unused.
+
+| Method | Description |
+|--------|-------------|
+| `setBatchingStrategy(context, strategy)` | Overrides the batching strategy |
+| `setBatchSize(context, size)` | Overrides the batch size (1 to 100) |
+| `setFlushInterval(context, intervalSeconds)` | Overrides the flush interval (10 to 300 seconds) |
+| `simulateServerConfig(context, batchSize, flushInterval, ttl, strategy)` | Sets batch size, flush interval and optionally strategy at once |
+| `resetDebugConfig(context)` | Clears every override |
+| `printDebugConfig(context)` | Logs the current overrides |
+| `getDebugStrategy(context)` | Returns the strategy override, or `null` |
+| `getDebugBatchSize(context)` | Returns the batch size override, or `null` |
+| `getDebugFlushInterval(context)` | Returns the flush interval override, or `null` |
+| `isAppDebuggable(context)` | Returns `true` when the host app is debuggable |
 
 ## App Links Setup
 
@@ -815,20 +914,6 @@ The `android:autoVerify="true"` attribute in your intent filter triggers automat
 
 ## Advanced Usage
 
-### Manual Session Management
-
-Override automatic session tracking for custom session boundaries:
-
-```kotlin
-// Start tracking a custom session (e.g., a game round)
-LinkzlySDK.startSession()
-
-// ... user activity ...
-
-// End the custom session
-LinkzlySDK.endSession()
-```
-
 ### Custom Event Parameter Types
 
 The `parameters` map accepts `Map<String, Any>` and supports these value types:
@@ -895,17 +980,18 @@ class MyApplication : Application() {
 
 ## Privacy & Compliance
 
-### GDPR Implementation
+### Consent and opt-out
 
 ```kotlin
-// Check consent before enabling tracking
+// Call after configure(): before then setTrackingEnabled has no effect
+// (stops custom events, purchases, refunds and trackEventBatch; not install, open or session-end events)
 fun onUserConsentUpdated(hasConsent: Boolean) {
     LinkzlySDK.setTrackingEnabled(hasConsent)
     LinkzlySDK.setAdvertisingTrackingEnabled(hasConsent)
 }
 
 // Complete opt-out flow
-fun handleGDPRDeletion() {
+fun handleOptOut() {
     LinkzlySDK.setTrackingEnabled(false)
     LinkzlySDK.setAdvertisingTrackingEnabled(false)
     LinkzlySDK.setUserID("")
@@ -914,11 +1000,14 @@ fun handleGDPRDeletion() {
 }
 ```
 
+The SDK sends nothing before `configure`: an app that must send nothing before the user consents delays `configure` until the user has consented, and uses `setTrackingEnabled(false)` afterwards to stop events, purchases and refunds.
+
 ### Data Collected
 
 | Data | When | Purpose |
 |------|------|---------|
 | Device model, manufacturer | Every event | Device identification |
+| Carrier name | Every event | User context |
 | Android version, API level | Every event | Compatibility tracking |
 | App version, package name | Every event | App identification |
 | Screen size, locale, timezone | Every event | User context |
@@ -964,11 +1053,12 @@ If you encounter issues, add to your `proguard-rules.pro`:
 
 ### Events Not Tracking
 
-1. Confirm tracking is enabled: `LinkzlySDK.isTrackingEnabled()`
-2. Check internet permission is granted
-3. Verify device has network connectivity
-4. Check pending event count: `LinkzlySDK.getPendingEventCount()`
-5. Try manual flush: `LinkzlySDK.flushEvents { ... }`
+1. For a custom event, confirm its name is registered for the app in the console: an unregistered name is dropped and the batched path still reports success
+2. Confirm tracking is enabled: `LinkzlySDK.isTrackingEnabled()`
+3. Check internet permission is granted
+4. Verify device has network connectivity
+5. Check pending event count: `LinkzlySDK.getPendingEventCount()`
+6. Try manual flush: `LinkzlySDK.flushEvents { ... }`
 
 ### Deep Links Not Working
 
@@ -994,8 +1084,7 @@ If you encounter issues, add to your `proguard-rules.pro`:
 
 1. Ensure the app is installed from Google Play (or use a test referrer)
 2. The Install Referrer API requires Google Play Services
-3. Referrer data is only available for ~90 seconds after install
-4. Test with: `adb shell am broadcast -a com.android.vending.INSTALL_REFERRER`
+3. Without referrer data the install is still tracked, but without the referrer
 
 ### Build Errors
 
@@ -1050,10 +1139,10 @@ buildscript {
 
 ### Session Management
 
-- Sessions start when the app enters the foreground
-- Sessions end when the app enters the background
-- A new session is created if the app was backgrounded for more than 30 minutes
-- Session data is included with all events for attribution accuracy
+- A session starts each time the app enters the foreground
+- A session ends when the app enters the background, and pending events are flushed
+- An open event is tracked when the app enters the foreground more than 30 seconds after the last foreground
+- The session id is included with events
 
 ## Performance
 
@@ -1066,31 +1155,27 @@ buildscript {
 - No background services or wake locks
 - Lifecycle-aware observers (no polling)
 - Lightweight serialization with kotlinx.serialization
-- SDK size: < 100KB (excluding dependencies)
 
 ## FAQ
 
-**Can I use this with React Native?**
-Yes. Create a native module that bridges to `LinkzlySDK` methods. All methods are static and callable from Java/Kotlin bridge code.
+**Can I use this with React Native or Flutter?**
+Linkzly publishes a React Native SDK and a Flutter plugin that wrap the native SDKs; see the documentation. Every `LinkzlySDK` method is `@JvmStatic`, so it is also callable from Java.
 
 **Does it work with Jetpack Compose?**
 Yes. The SDK is lifecycle-aware and works with any UI framework. Call `handleAppLink(intent)` from your Activity regardless of whether you use Compose or Views.
 
 **What happens when the device is offline?**
-Events are queued locally in persistent storage. They are automatically sent when connectivity is restored. The queue holds up to 10,000 events.
+Events are queued locally in persistent storage. They are automatically sent when connectivity is restored. The queue holds up to 1,000 events; when it is full, the oldest event is dropped.
 
 **Does it work on Huawei devices (no Google Play Services)?**
 Core event tracking and deep linking work. Install Referrer and GAID collection require Google Play Services and will be unavailable on Huawei devices.
-
-**How large is the SDK?**
-The SDK adds approximately 80-100KB to your APK (excluding shared dependencies like OkHttp and kotlinx.serialization).
 
 ## Integration Checklist
 
 - [ ] Created app in Linkzly Console (Dashboard > Apps)
 - [ ] Copied SDK key from console
-- [ ] Added Linkzly SDK dependency via Gradle
-- [ ] Called `LinkzlySDK.initialize()` in Application class
+- [ ] Added Linkzly SDK dependency (`1.0.9`) via Gradle
+- [ ] Called `LinkzlySDK.configure(...)` in Application class
 - [ ] Added `intent-filter` with `android:autoVerify="true"` in AndroidManifest.xml
 - [ ] Implemented deep link handling in MainActivity
 - [ ] Registered device push token via `setNotificationToken` (and cleared on logout)
@@ -1098,13 +1183,9 @@ The SDK adds approximately 80-100KB to your APK (excluding shared dependencies l
 
 ## Support
 
-- [Documentation](https://app.linkzly.com)
+- [Documentation](https://docs.linkzly.com/docs/sdk-android)
 - [Issue Tracker](https://github.com/Linkzly/linkzly-android-sdk/issues)
 - Email: support@linkzly.com
-
-## Example Apps
-
-- **Android Example**: [linkzly-android-sdk-example](https://github.com/Linkzly/linkzly-android-sdk-example)
 
 ## Related SDKs
 
