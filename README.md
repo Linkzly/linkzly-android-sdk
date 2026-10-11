@@ -13,6 +13,10 @@ Full documentation: https://docs.linkzly.com/docs/sdk-android
 
 Guides: [Tracking events](https://docs.linkzly.com/docs/sdk-tracking-events) | [Tracking purchases and refunds](https://docs.linkzly.com/docs/sdk-tracking-purchases) | [Integrations setup](https://docs.linkzly.com/docs/sdk-integrations-setup)
 
+## Using an AI coding agent
+
+If you use an AI coding agent (Claude Code, Codex, Cursor, GitHub Copilot, Antigravity), give it the Linkzly skill and ask it to add the SDK to your app: `npx skills add Linkzly/skills`. The skill carries these instructions, cut to your platform, and rules for the SDK behaviours that are easy to get wrong. It asks you for your SDK key and never makes one up. See [Set up with an AI agent](https://docs.linkzly.com/docs/sdk-ai-agents).
+
 ## Features
 
 - **Attribution Tracking** - Install tracking with Google Play Install Referrer API, app open tracking, automatic session management
@@ -44,7 +48,7 @@ Before integrating the SDK, set up your app in the Linkzly Console:
 1. Go to **Dashboard > Apps** and click "Register App"
 2. Enter your Android **Package Name** and **SHA-256 Fingerprints**
 3. Choose a verification method (Hosted recommended for quick start)
-4. Copy your **SDK Key** from the post-creation wizard or from Manage App > Overview > SDK Configuration
+4. Copy your **SDK Key** from the post-creation wizard or from Manage app > Overview > SDK Configuration
 
 Your SDK key starts with `slk_` followed by at least 40 hexadecimal characters, and uniquely identifies your app. `configure()` rejects any other format.
 
@@ -53,7 +57,7 @@ Your SDK key starts with `slk_` followed by at least 40 hexadecimal characters, 
 Your SDK key (`slk_` prefix) authenticates your app with Linkzly's servers. You can find it in:
 
 - **Post-creation wizard**: Displayed prominently right after creating your app
-- **Dashboard > Apps > Manage App > Overview > SDK Configuration**: Click the eye icon to reveal, or copy directly
+- **Dashboard > Apps > Manage app > Overview > SDK Configuration**: Click the eye icon to reveal, or copy directly
 
 > **Note**: Each app has a unique SDK key. Do not share keys between different apps.
 
@@ -173,14 +177,16 @@ class MyApplication : Application() {
 
         LinkzlySDK.configure(
             context = this,
-            sdkKey = "slk_your_key_from_console",  // Get this from Dashboard > Apps > Manage App
-            environment = Environment.STAGING  // Use PRODUCTION for release
+            sdkKey = "slk_your_key_from_console",  // Get this from Dashboard > Apps > Manage app
+            environment = Environment.PRODUCTION
         )
     }
 }
 ```
 
 `Environment` has three values: `PRODUCTION` (the default), `STAGING` and `DEVELOPMENT`. The first `configure()` call wins. Install, open and session tracking start by themselves; there is nothing else to call.
+
+`STAGING` and `DEVELOPMENT` send to separate Linkzly backends, so events sent with them never show in your console. Use `PRODUCTION` with the key from your console.
 
 **Don't forget to register your Application class in AndroidManifest.xml:**
 ```xml
@@ -297,7 +303,7 @@ LinkzlySDK.configure(
 )
 ```
 
-Call this once in your `Application.onCreate()`. The `Environment` enum supports `PRODUCTION` and `STAGING`.
+Call this once in your `Application.onCreate()`. `Environment` has three values: `PRODUCTION`, `STAGING` and `DEVELOPMENT`.
 
 ### Deep Linking
 
@@ -393,7 +399,7 @@ LinkzlySDK.trackEventBatch(
 )
 ```
 
-See [Tracking events](https://docs.linkzly.com/docs/sdk-tracking-events) and [Tracking purchases and refunds](https://docs.linkzly.com/docs/sdk-tracking-purchases) for the full guides.
+See [Tracking events](https://docs.linkzly.com/docs/sdk-tracking-events) and [Tracking purchases and refunds](https://docs.linkzly.com/docs/sdk-tracking-purchases) for the full guides. Purchases are recorded only when Revenue & LTV is enabled for your organisation.
 
 ### Sessions
 
@@ -1179,7 +1185,7 @@ Core event tracking and deep linking work. Install Referrer and GAID collection 
 - [ ] Added `intent-filter` with `android:autoVerify="true"` in AndroidManifest.xml
 - [ ] Implemented deep link handling in MainActivity
 - [ ] Registered device push token via `setNotificationToken` (and cleared on logout)
-- [ ] Verified integration in Linkzly Console (Manage App > Integration tab)
+- [ ] Verified integration in Linkzly Console (Manage app > Verification tab, the SDK connection card)
 
 ## Support
 
