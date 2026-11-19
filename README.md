@@ -7,7 +7,7 @@
 
 The official Android SDK for [Linkzly](https://linkzly.com) - a powerful mobile app attribution and deep linking platform.
 
-**SDK version:** 1.0.10
+**SDK version:** 1.0.11
 
 Full documentation: https://docs.linkzly.com/docs/sdk-android
 
@@ -95,7 +95,7 @@ Add the SDK to your app's `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.github.Linkzly:linkzly-android-sdk:1.0.10")
+    implementation("com.github.Linkzly:linkzly-android-sdk:1.0.11")
 }
 ```
 
@@ -103,7 +103,7 @@ Or in Groovy (`build.gradle`):
 
 ```gradle
 dependencies {
-    implementation 'com.github.Linkzly:linkzly-android-sdk:1.0.10'
+    implementation 'com.github.Linkzly:linkzly-android-sdk:1.0.11'
 }
 ```
 
@@ -1180,7 +1180,7 @@ Core event tracking and deep linking work. Install Referrer and GAID collection 
 
 - [ ] Created app in Linkzly Console (Dashboard > Apps)
 - [ ] Copied SDK key from console
-- [ ] Added Linkzly SDK dependency (`1.0.10`) via Gradle
+- [ ] Added Linkzly SDK dependency (`1.0.11`) via Gradle
 - [ ] Called `LinkzlySDK.configure(...)` in Application class
 - [ ] Added `intent-filter` with `android:autoVerify="true"` in AndroidManifest.xml
 - [ ] Implemented deep link handling in MainActivity
