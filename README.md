@@ -650,6 +650,48 @@ LinkzlySDK.disablePush()
 - Notifications not received -- Ensure Firebase is initialized before calling `initializePush()`
 - Ensure `google-services.json` is present and valid, and the device has Google Play Services installed
 
+### Push notification opens
+
+Linkzly counts a device as having opened a push campaign when its user taps the notification. The campaign page in the Linkzly console shows the number. This needs Android SDK 1.0.11 or later.
+
+**Automatic.** You write no code. The SDK counts taps on notifications that Android shows itself from an FCM notification message (the system tray, with the app in the background or closed), including the tap that launches the app.
+
+- Only notifications sent by Linkzly count. Their data carries `campaign_id`, or `flow_delivery_id` for triggered pushes.
+- Nothing is sent while analytics consent is denied (`setConsent`).
+- A tap that arrives before `configure` is held in memory and sent after it.
+
+If a tap can bring a running `singleTop` or `singleTask` activity to the front, Android hands the tap to `onNewIntent`, which the SDK cannot see by itself. Pass it on from there:
+
+```kotlin
+override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    LinkzlySDK.handleNotificationIntent(intent)
+}
+```
+
+**Explicit call.** Call `trackNotificationOpen` from your own tap handling when your app draws the notification itself, and for action buttons. That means a notification your code shows while the app is in the foreground (from your `FirebaseMessagingService`, with `NotificationCompat`, Notifee or a similar library), and any action button. Pass the notification's data and, for a button, its id:
+
+```kotlin
+// Tap on the notification itself
+LinkzlySDK.trackNotificationOpen(remoteMessage.data)
+
+// Tap on an action button
+LinkzlySDK.trackNotificationOpen(remoteMessage.data, actionId = "accept")
+
+// Or from the Intent the tap opened your app with
+LinkzlySDK.trackNotificationOpen(intent)
+```
+
+The signatures are `trackNotificationOpen(data: Map<String, Any?>?, actionId: String? = null)` and `trackNotificationOpen(intent: Intent?, actionId: String? = null)`. Only String values are read. A tap that reaches the SDK twice within 5 seconds, once automatically and once through this call, is counted once, so it is safe to call on every tap. Called before `configure`, the call does nothing.
+
+**Turning automatic capture off.** Add this to the `<application>` element of your `AndroidManifest.xml`. The explicit call still works.
+
+```xml
+<meta-data
+    android:name="com.linkzly.sdk.auto_track_notification_opens"
+    android:value="false" />
+```
+
 ## Gaming Tracking Module
 
 The gaming tracking module provides a dedicated event pipeline optimized for game telemetry with automatic batching, retry logic, and offline support.
