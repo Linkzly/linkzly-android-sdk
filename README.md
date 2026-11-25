@@ -365,13 +365,17 @@ LinkzlySDK.trackEvent("level_completed", mapOf(
 
 // Track a purchase: revenue, currency and transactionId are required.
 // transactionId is the deduplication key. revenueType is "iap", "subscription" or "other".
+// environment is "production" or "sandbox". The SDK sends only what you pass: without it the
+// purchase still counts as revenue, but Linkzly may hold it back from your ad networks.
+// See https://docs.linkzly.com/docs/sdk-tracking-purchases#purchase-environment
 LinkzlySDK.trackPurchase(
     parameters = mapOf(
         "revenue" to 9.99,
         "currency" to "USD",
         "transactionId" to "order-12345",
         "productId" to "premium_monthly",
-        "revenueType" to "subscription"
+        "revenueType" to "subscription",
+        "environment" to "production" // "sandbox" in the builds you test purchases with
     ),
     callback = { result ->  // optional
         result.onSuccess { Log.d("Linkzly", "Purchase tracked") }
